@@ -117,27 +117,26 @@ async def send_text(client: Bot, message: Message):
 🚫 Blocked: <code>{blocked}</code>
 ⚠️ Deleted: <code>{deleted}</code>
 ❌ Failed: <code>{unsuccessful}</code></b>
+        await pls_wait.edit(status_update)
+        last_update_percentage = percent_complete
 
-➪ To stop broadcasting: <b>/cancel</b>"""
-            await pls_wait.edit(status_update)
-            last_update_percentage = percent_complete
+        # ✅ Final status update
+        final_status = f"""{complete_msg}
+<blockquote>Done:</b> [{final_progress_bar}] {percent_complete}%</blockquote>
 
-    # ✅ Final status update
-    final_status = f"""<b>{complete_msg}
-
-<blockquote>Done:</b> [{final_progress_bar}] {percent_complete:.0%}</blockquote>
-
-<b>🚻 Total Users: <code>{total}</code>
+<b>👥 Total Users: <code>{total}</code>
 ✅ Successful: <code>{successful}</code>
 🚫 Blocked: <code>{blocked}</code>
 ⚠️ Deleted: <code>{deleted}</code>
 ❌ Failed: <code>{unsuccessful}</code></b>"""
-    await pls_wait.edit(final_status)
-    
-    else:
+
+        await pls_wait.edit(final_status)
+
+        # ❌ Wrong `else:` removed — now it's valid
         msg = await message.reply(REPLY_ERROR)
         await asyncio.sleep(8)
         await msg.delete()
+
 
 
 @Bot.on_message(filters.command('status') & filters.private & is_admin)
