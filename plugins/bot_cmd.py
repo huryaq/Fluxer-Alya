@@ -32,94 +32,108 @@ async def cancel_broadcast(client: Bot, message: Message):
     async with cancel_lock:
         is_canceled = True
 
+
 @Bot.on_message(filters.command('broadcast') & filters.private & is_admin)
 async def send_text(client: Bot, message: Message):
     global is_canceled
     async with cancel_lock:
         is_canceled = False
+
     mode = False
     broad_mode = ''
     store = message.text.split()[1:]
-    
-    if store and len(store) == 1 and store[0] == 'silent':
+
+    if store and len(store) == 1 and store[0].lower() == 'silent':
         mode = True
         broad_mode = 'SILENT '
 
-    if message.reply_to_message:
-        query = await kingdb.full_userbase()
-        broadcast_msg = message.reply_to_message
-        total = len(query)
-        successful = 0
-        blocked = 0
-        deleted = 0
-        unsuccessful = 0
+    if not message.reply_to_message:
+        msg = await message.reply(REPLY_ERROR)
+        await asyncio.sleep(8)
+        return await msg.delete()
 
-        pls_wait = await message.reply("<i>ʙʀᴏᴀᴅᴄᴀsᴛɪɴɢ ᴍᴇssᴀɢᴇ... ᴛʜɪs ᴡɪʟʟ ᴛᴀᴋᴇ sᴏᴍᴇ ᴛɪᴍᴇ.</i>")
-        bar_length = 20
-        final_progress_bar = "●" * bar_length
-        complete_msg = f"🤖 {broad_mode}BROADCAST COMPLETED ✅"
-        progress_bar = ''
-        last_update_percentage = 0
-        percent_complete = 0
-        update_interval = 0.05  # Update progress bar every 5%
+    # ✅ Get all users from DB
+    query = await kingdb.full_userbase()
+    if not query:
+        return await message.reply("⚠ No users found in database!")
 
-        for i, chat_id in enumerate(query, start=1):
-            async with cancel_lock:
-                if is_canceled:
-                    final_progress_bar = progress_bar
-                    complete_msg = f"🤖 {broad_mode}BROADCAST CANCELED ❌"
-                    break
+    broadcast_msg = message.reply_to_message
+    total = len(query)
+    successful = 0
+    blocked = 0
+    deleted = 0
+    unsuccessful = 0
+
+    pls_wait = await message.reply("<i>Broadcasting message... This may take some time.</i>")
+
+    bar_length = 20
+    final_progress_bar = "●" * bar_length
+    complete_msg = f"🤖 {broad_mode}BROADCAST COMPLETED ✅"
+    progress_bar = ''
+    last_update_percentage = 0
+    percent_complete = 0
+    update_interval = 0.05  # update every 5%
+
+    for i, user in enumerate(query, start=1):
+        async with cancel_lock:
+            if is_canceled:
+                final_progress_bar = progress_bar
+                complete_msg = f"🤖 {broad_mode}BROADCAST CANCELED ❌"
+                break
+
+        try:
+            # ✅ Ensure chat_id is always int
+            chat_id = int(user)
+            await broadcast_msg.copy(chat_id, disable_notification=mode)
+            successful += 1
+        except FloodWait as e:
+            await asyncio.sleep(e.x)
             try:
                 await broadcast_msg.copy(chat_id, disable_notification=mode)
                 successful += 1
-            except FloodWait as e:
-                await asyncio.sleep(e.x)
-                await broadcast_msg.copy(chat_id, disable_notification=mode)
-                successful += 1
-            except UserIsBlocked:
-                await kingdb.del_user(chat_id)
-                blocked += 1
-            except InputUserDeactivated:
-                await kingdb.del_user(chat_id)
-                deleted += 1
             except:
                 unsuccessful += 1
+        except UserIsBlocked:
+            await kingdb.del_user(chat_id)
+            blocked += 1
+        except InputUserDeactivated:
+            await kingdb.del_user(chat_id)
+            deleted += 1
+        except Exception:
+            unsuccessful += 1
 
-            # Calculate percentage complete
-            percent_complete = i / total
+        # ✅ Progress bar update
+        percent_complete = i / total
+        if percent_complete - last_update_percentage >= update_interval or last_update_percentage == 0:
+            num_blocks = int(percent_complete * bar_length)
+            progress_bar = "●" * num_blocks + "○" * (bar_length - num_blocks)
 
-            # Update progress bar
-            if percent_complete - last_update_percentage >= update_interval or last_update_percentage == 0:
-                num_blocks = int(percent_complete * bar_length)
-                progress_bar = "●" * num_blocks + "○" * (bar_length - num_blocks)
-    
-                # Send periodic status updates
-                status_update = f"""<b>🤖 {broad_mode}BROADCAST IN PROGRESS...
+            status_update = f"""<b>🤖 {broad_mode}BROADCAST IN PROGRESS...
 
 <blockquote>⏳:</b> [{progress_bar}] <code>{percent_complete:.0%}</code></blockquote>
 
-<b>🚻 ᴛᴏᴛᴀʟ ᴜsᴇʀs: <code>{total}</code>
-✅ sᴜᴄᴄᴇssғᴜʟ: <code>{successful}</code>
-🚫 ʙʟᴏᴄᴋᴇᴅ ᴜsᴇʀs: <code>{blocked}</code>
-⚠️ ᴅᴇʟᴇᴛᴇᴅ ᴀᴄᴄᴏᴜɴᴛs: <code>{deleted}</code>
-❌ ᴜɴsᴜᴄᴄᴇssғᴜʟ: <code>{unsuccessful}</code></b>
+<b>🚻 Total Users: <code>{total}</code>
+✅ Successful: <code>{successful}</code>
+🚫 Blocked: <code>{blocked}</code>
+⚠️ Deleted: <code>{deleted}</code>
+❌ Failed: <code>{unsuccessful}</code></b>
 
-➪ TO STOP THE BROADCASTING PLEASE CLICK: <b>/cancel</b>"""
-                await pls_wait.edit(status_update)
-                last_update_percentage = percent_complete
+➪ To stop broadcasting: <b>/cancel</b>"""
+            await pls_wait.edit(status_update)
+            last_update_percentage = percent_complete
 
-        # Final status update
-        final_status = f"""<b>{complete_msg}
+    # ✅ Final status update
+    final_status = f"""<b>{complete_msg}
 
-<blockquote>ᴅᴏɴᴇ:</b> [{final_progress_bar}] {percent_complete:.0%}</blockquote>
+<blockquote>Done:</b> [{final_progress_bar}] {percent_complete:.0%}</blockquote>
 
-<b>🚻 ᴛᴏᴛᴀʟ ᴜsᴇʀs: <code>{total}</code>
-✅ sᴜᴄᴄᴇssғᴜʟ: <code>{successful}</code>
-🚫 ʙʟᴏᴄᴋᴇᴅ ᴜsᴇʀs: <code>{blocked}</code>
-⚠️ ᴅᴇʟᴇᴛᴇᴅ ᴀᴄᴄᴏᴜɴᴛs: <code>{deleted}</code>
-❌ ᴜɴsᴜᴄᴄᴇssғᴜʟ: <code>{unsuccessful}</code></b>"""
-        return await pls_wait.edit(final_status)
-
+<b>🚻 Total Users: <code>{total}</code>
+✅ Successful: <code>{successful}</code>
+🚫 Blocked: <code>{blocked}</code>
+⚠️ Deleted: <code>{deleted}</code>
+❌ Failed: <code>{unsuccessful}</code></b>"""
+    await pls_wait.edit(final_status)
+    
     else:
         msg = await message.reply(REPLY_ERROR)
         await asyncio.sleep(8)
